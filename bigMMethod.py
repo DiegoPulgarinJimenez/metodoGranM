@@ -171,7 +171,7 @@ class GranMApp:
 
     @staticmethod
     def big_m_method(func_str, restricciones):
-        # ToDo
+        # Método gran M ToDo
         return None
 
 
