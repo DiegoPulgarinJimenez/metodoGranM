@@ -22,20 +22,30 @@ class GranMApp:
 
         tk.Label(main_window_gm, text="Restricción 1:").grid(row=1, column=0)
         self.restriction1_entry = tk.Entry(main_window_gm)
-        self.restriction1_entry.insert(0, "2*x1 + 3*x2 <= 12")
+        self.restriction1_entry.insert(0, "2*x1 + 3*x2 >= 12")
         self.restriction1_entry.grid(row=1, column=1, padx=10, pady=10)
 
         tk.Label(main_window_gm, text="Restricción 2:").grid(row=2, column=0)
         self.restriction2_entry = tk.Entry(main_window_gm)
-        self.restriction2_entry.insert(0, "4*x1 + 1*x2 <= 5")
+        self.restriction2_entry.insert(0, "4*x1 + 1*x2 >= 5")
         self.restriction2_entry.grid(row=2, column=1, padx=10, pady=10)
 
         tk.Label(main_window_gm, text="Restricción 3:").grid(row=3, column=0)
         self.restriction3_entry = tk.Entry(main_window_gm)
-        self.restriction3_entry.insert(0, "3*x1 + 3*x2 <= 18")
+        self.restriction3_entry.insert(0, "3*x1 + 3*x2 >= 18")
         self.restriction3_entry.grid(row=3, column=1, padx=10, pady=10)
 
         tk.Label(main_window_gm, text="x1, x2 ≥ 0").grid(row=4, column=1)
+
+        # Variable para almacenar selección
+        self.option = tk.StringVar(value="Seleccione Procedimiento")
+
+        # Lista de opciones
+        self.options = ["Maximizar", "Minimizar"]
+
+        # Crear menú desplegable (OptionMenu)
+        self.menu = tk.OptionMenu(main_window_gm, self.option, *self.options)
+        self.menu.grid(row=4, column=0, padx=10, pady=10)
 
         # Botones para ejecutar el método e imprimir el proceso
         tk.Button(main_window_gm, text="Ejecutar Método", command=self.execute_method).grid(row=5, column=0, padx=10,
@@ -57,10 +67,10 @@ class GranMApp:
         x1, x2 = symbols('x1 x2')
 
         try:
-            # Obtener las restricciones como expresiones simbólicas
-            r1_expr = parse_expr(restriction1.replace("<=", "-(") + ")")
-            r2_expr = parse_expr(restriction2.replace("<=", "-(") + ")")
-            r3_expr = parse_expr(restriction3.replace("<=", "-(") + ")")
+            # Obtener las restricciones como expresiones simbólicas (verificar la lógica de las desigualdades)
+            r1_expr = parse_expr(restriction1.replace(">=", "-(") + ")")
+            r2_expr = parse_expr(restriction2.replace(">=", "-(") + ")")
+            r3_expr = parse_expr(restriction3.replace(">=", "-(") + ")")
 
             # Resolver las restricciones una vez
             r1_sol = solve(r1_expr, x2)[0]
@@ -114,6 +124,7 @@ class GranMApp:
         restriction1 = self.restriction1_entry.get()
         restriction2 = self.restriction2_entry.get()
         restriction3 = self.restriction3_entry.get()
+        selection = self.option.get()
 
         if not func or not restriction1 or not restriction2:
             messagebox.showerror("Error", "Por favor ingrese la función y todas las restricciones.")
@@ -121,7 +132,7 @@ class GranMApp:
 
         try:
             # Ejecutar el método de Gran M
-            result = self.big_m_method(func, [restriction1, restriction2, restriction3])
+            result = self.big_m_method(func, [restriction1, restriction2, restriction3], selection)
 
             # Actualizar gráfica de las funciones ingresadas por el usuario
             self.create_plot()
@@ -145,6 +156,7 @@ class GranMApp:
 
         func = self.func_entry.get()
         restricciones = [self.restriction1_entry.get(), self.restriction2_entry.get(), self.restriction3_entry.get()]
+        proceso = self.option.get()
 
         # Hacer texto no editable después de imprimir el proceso ToDo
         st.insert(tk.END, "Proceso detallado del Método de Gran M:\n\n")
@@ -153,9 +165,10 @@ class GranMApp:
         st.insert(tk.END, f"Restricción 2: {restricciones[1]}\n")
         st.insert(tk.END, f"Restricción 3: {restricciones[2]}\n")
         st.insert(tk.END, "x1, x2 >= 0\n\n")
+        st.insert(tk.END, f"Proceso: {proceso}\n\n")
 
         # Ejecutar el método y capturar los pasos
-        tabla_inicial, tablas_iteraciones = self.big_m_method(func, restricciones)
+        tabla_inicial, tablas_iteraciones = self.big_m_method(func, restricciones, proceso)
 
         # Imprimir tabla inicial (Primera Iteración (Primer Sprint octubre 10 ToDo))
         st.insert(tk.END, "Tabla Inicial:\n")
@@ -170,9 +183,78 @@ class GranMApp:
             # Explicación de la tabla ToDo
 
     @staticmethod
-    def big_m_method(func_str, restricciones):
-        # Método gran M ToDo
-        return None
+    def big_m_method(func_str, restricciones, selection):
+
+        # Código Método Gran M
+        variables = symbols("x1 x2")
+        func = parse_expr(func_str)
+
+        restricciones_ecuaciones = []
+        variables_artificiales = []
+        variables_holgura = []
+        contador_a = 0
+        contador_s = 0
+
+        for i, restriccion in enumerate(restricciones):
+            if ">=" in restriccion:
+                lhs, rhs = restriccion.split(">=")
+
+                # Agregar variable de holgura (S) y artificial (A)
+                v_holgura = symbols(f"S{contador_s + 1}")
+                v_artificial = symbols(f"A{contador_a + 1}")
+
+                contador_a += 1
+                contador_s += 1
+
+                # Modificar la restricción para convertirla en igualdad
+                eq = Eq(parse_expr(lhs) - v_holgura + v_artificial, parse_expr(rhs))
+                restricciones_ecuaciones.append(eq)
+
+                # Agregar las variables de exceso y artificial a las listas
+                variables_holgura.append(v_holgura)
+                variables_artificiales.append(v_artificial)
+
+            elif "<=" in restriccion:
+                lhs, rhs = restriccion.split("<=")
+
+                # Agregar variable de holgura (S)
+                v_holgura = symbols(f"S{contador_s + 1}")
+
+                contador_s += 1
+
+                # Modificar la restricción para convertirla en igualdad
+                eq = Eq(parse_expr(lhs) + v_holgura, parse_expr(rhs))
+                restricciones_ecuaciones.append(eq)
+
+                # Agregar las variables de exceso y artificial a las listas
+                variables_holgura.append(v_holgura)
+
+            elif "=" in restriccion:
+                lhs, rhs = restriccion.split("=")
+
+                # Agregar variable de artificial (A)
+                v_artificial = symbols(f"A{contador_a + 1}")
+
+                contador_a += 1
+
+                # Modificar la restricción para convertirla en igualdad
+                eq = Eq(parse_expr(lhs) + v_artificial, parse_expr(rhs))
+                restricciones_ecuaciones.append(eq)
+
+                # Agregar las variables de exceso y artificial a las listas
+                variables_artificiales.append(v_artificial)
+            else:
+                raise ValueError("Verifique las desigualdades en las restricciones deben ser <=, >= o =")
+
+        # print(restricciones_ecuaciones)
+        if selection == "Minimizar":
+            def minimizar (*args):
+                pass
+        elif selection == "Maximizar":
+            def maximizar (*args):
+                pass
+        else:
+            raise ValueError("Seleccione si Maximizar o Minimizar")
 
 
 if __name__ == "__main__":
