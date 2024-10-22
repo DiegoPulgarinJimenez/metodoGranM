@@ -185,93 +185,25 @@ class GranMApp:
     @staticmethod
     def big_m_method(func_str, restricciones, selection):
 
-        def pivoteo(tabla, col_entrada, fila_salida):
-            # Esta es una función de ejemplo para realizar el pivoteo.
-            # Debe actualizar la tabla de acuerdo con las operaciones elementales.
-            fila_pivote = tabla[fila_salida, :] / tabla[fila_salida, col_entrada]
-            tabla[fila_salida, :] = fila_pivote
-            for i in range(len(tabla)):
-                if i != fila_salida:
-                    tabla[i, :] = tabla[i, :] - tabla[i, col_entrada] * fila_pivote
-            print(tabla)
+        function_obj = func_str
 
-            return pd.DataFrame(tabla)
+        print(function_obj)
 
         def maximizar(fun_restr_igualdad):
-            """
-            Asumiendo que `fun_restr_igualdad` es una lista que contiene las restricciones llevadas a igualdades
-            de la siguiente manera:
-            [Eq(A1 - S1 + 2*x1 + 3*x2, 12), Eq(A2 - S2 + 4*x1 + x2, 5), Eq(A3 - S3 + 3*x1 + 3*x2, 18)]
-            """
-
-            # Definir el valor de la penalización (M)
-            M = 1e6
-
-            # Extraer las variables artificiales y de holgura
-            variables_artificiales = sorted(
-                [symbol for symbol in fun_restr_igualdad[0].lhs.atoms() if 'A' in str(symbol)], key=lambda x: str(x))
-            variables_holgura = sorted([symbol for symbol in fun_restr_igualdad[0].lhs.atoms() if 'S' in str(symbol)],
-                                       key=lambda x: str(x))
-
-            # Inicializar la tabla simplex
-            # Crear matriz con las restricciones en forma de ecuaciones (coeficientes)
-            filas_restricciones = []
-            for restriccion in fun_restr_igualdad:
-                lhs = restriccion.lhs - restriccion.rhs
-                coeficientes = [lhs.coeff(var) for var in (variables_holgura + variables_artificiales)]
-                filas_restricciones.append(coeficientes + [restriccion.rhs])
-
-            # Crear DataFrame (tabla Simplex) con columnas para variables de holgura, artificiales y RHS
-            columnas = [f'S{i + 1}' for i in range(len(variables_holgura))] + [f'A{i + 1}' for i in
-                                                                               range(len(variables_artificiales))] + [
-                           'RHS']
-            tabla_simplex = pd.DataFrame(filas_restricciones, columns=columnas)
-
-            # Inicializar la fila Z (función objetivo), tener en cuenta las variables artificiales con penalización M
-            fila_z = [-M if f'A{i + 1}' in columnas else 0 for i in range(len(variables_artificiales))] + [
-                0]  # Penalty for artificial vars
-            fila_z += [0] * (
-                        len(columnas) - len(fila_z))  # Asegurar que tenga la misma longitud que el número de columnas
-
-            # Añadir la fila Z al DataFrame (tener en cuenta que debe tener el mismo número de columnas)
-            tabla_simplex.loc['Z'] = fila_z
-
-            iteration = 1
-            while True:
-                print(f"Iteración {iteration}:")
-
-                # 1. Seleccionar la variable de entrada (coeficiente más negativo en la fila Z)
-                fila_z = tabla_simplex.loc['Z'].values[:-1]  # Todos los coeficientes excepto el RHS
-                columna_entrada = np.argmin(fila_z)  # Índice del valor más negativo
-
-                if fila_z[columna_entrada] >= 0:
-                    print("No hay más coeficientes negativos. Solución óptima encontrada.")
-                    break  # La solución es óptima
-
-                # 2. Seleccionar la variable de salida (razón mínima)
-                r_h_s = tabla_simplex.iloc[:-1, -1].values  # Valores RHS de las restricciones
-                columna_pivote = tabla_simplex.iloc[:-1, columna_entrada].values  # Columna de la variable de entrada
-                razones = [r_h_s[j] / columna_pivote[j] if columna_pivote[j] > 0 else np.inf for j in range(len(r_h_s))]
-                fila_salida = np.argmin(razones)  # Índice de la fila con la razón mínima
-
-                # 3. Realizar el pivoteo
-
-                tabla_simplex = pivoteo(tabla_simplex.values, columna_entrada, fila_salida)
-
-                # Imprimir tabla actualizada
-                print(tabla_simplex)
-                iteration += 1
-                return tabla_simplex
+            function_maximizar = fun_restr_igualdad
+            print(function_maximizar[0])
+            pass
 
         def minimizar(fun_restr_igualdad):
             # ToDo
-            pass
+            function_minimizar = fun_restr_igualdad[0]
 
-        # Se pasan las desigualdades a igualdades
         variables = symbols("x1 x2")
         func = parse_expr(func_str)
 
-        restricciones_ecuaciones = []
+        # Se pasan las desigualdades a igualdades y se crea la función objetivo completa
+
+        restricciones_ecuaciones = [func_str]
         variables_artificiales = []
         variables_holgura = []
         contador_a = 0
@@ -285,6 +217,10 @@ class GranMApp:
                 v_holgura = symbols(f"S{contador_s + 1}")
                 v_artificial = symbols(f"A{contador_a + 1}")
 
+                restricciones_ecuaciones[0] += " + "
+                restricciones_ecuaciones[0] += " M*"
+                restricciones_ecuaciones[0] += f"A{contador_a + 1}"
+
                 contador_a += 1
                 contador_s += 1
 
@@ -296,11 +232,18 @@ class GranMApp:
                 variables_holgura.append(v_holgura)
                 variables_artificiales.append(v_artificial)
 
+                # print(variables_holgura)
+                # print(variables_artificiales)
+
             elif "<=" in restriccion:
                 lhs, rhs = restriccion.split("<=")
 
                 # Agregar variable de holgura (S)
                 v_holgura = symbols(f"S{contador_s + 1}")
+
+                restricciones_ecuaciones[0] += " + "
+                restricciones_ecuaciones[0] += " M*"
+                restricciones_ecuaciones[0] += f"S{contador_s + 1}"
 
                 contador_s += 1
 
@@ -317,6 +260,10 @@ class GranMApp:
                 # Agregar variable de artificial (A)
                 v_artificial = symbols(f"A{contador_a + 1}")
 
+                restricciones_ecuaciones[0] += " + "
+                restricciones_ecuaciones[0] += " M*"
+                restricciones_ecuaciones[0] += f"A{contador_a + 1}"
+
                 contador_a += 1
 
                 # Modificar la restricción para convertirla en igualdad
@@ -328,11 +275,17 @@ class GranMApp:
             else:
                 raise ValueError("Verifique las desigualdades en las restricciones deben ser <=, >= o =")
 
+        to_maximizar = restricciones_ecuaciones[0] + "- Z"
+        to_maximizar = Eq(parse_expr(to_maximizar), 0)
+        restricciones_ecuaciones[0] = Eq(parse_expr(restricciones_ecuaciones[0]), parse_expr("Z"))
+        print(to_maximizar)
+
         print(restricciones_ecuaciones)
         if selection == "Minimizar":
             minimizar(restricciones_ecuaciones)
 
         elif selection == "Maximizar":
+            restricciones_ecuaciones[0] = to_maximizar
             maximizar(restricciones_ecuaciones)
 
         else:
