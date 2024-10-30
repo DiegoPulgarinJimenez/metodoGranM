@@ -4,8 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from sympy import symbols, parse_expr, Eq, solve, lambdify
-import pandas as pd
+from tabulate import tabulate
 
+
+# análisis de sensibilidad
+# gráfico de los resultados
+# iteraciones
 
 class GranMApp:
     def __init__(self, main_window_gm):
@@ -99,7 +103,7 @@ class GranMApp:
             ax.plot(x_vals, r3_x2_vals, label=f"{restriction3}")
 
             # Graficar la función objetivo para diferentes valores de Z
-            obj_func = lambdify(x1, obj_expr, 'numpy')
+            # obj_func = lambdify(x1, obj_expr, 'numpy')
             for z in range(5, 20, 5):
                 obj_x2_vals = (z - obj_expr.coeff(x1) * x_vals) / obj_expr.coeff(x2)
                 ax.plot(x_vals, obj_x2_vals, label=f"{func} (Z = {z})", linestyle='--')
@@ -185,21 +189,50 @@ class GranMApp:
     @staticmethod
     def big_m_method(func_str, restricciones, selection):
 
-        function_obj = func_str
-
-        print(function_obj)
-
         def maximizar(fun_restr_igualdad):
+
+            """Montar primera tabla"""
+            # Definir las variables simbólicas
+            A1, A2, A3, M, Z, x1, x2, S1, S2, S3 = symbols('A1 A2 A3 M Z x1 x2 S1 S2 S3')
+
             function_maximizar = fun_restr_igualdad
-            print(function_maximizar[0])
+
+            # Crear lista de las variables que harán de encabezado
+            variables_encabezado = [A1, A2, A3, M, Z, x1, x2, S1, S2, S3]
+
+            # Definir nombres para cada ecuación (fila)
+            nombres_ecuaciones = ["Función objetivo", "Restricción 1", "Restricción 2", "Restricción 3"]
+
+            # Crear la primera fila con los encabezados de las variables y agregar columnas para nombre de ecuaciones y
+            # Término independiente
+            encabezados = ["Ecuaciones"] + [str(var) for var in variables_encabezado] + ["Término Independiente"]
+
+            # Construir la tabla inicial
+            tabla = []
+            for name, equation in zip(nombres_ecuaciones, function_maximizar):
+                # Separar el lado izquierdo y derecho de la ecuación
+                lado_izquierdo = equation.lhs
+                lado_derecho = equation.rhs
+
+                # Crear una lista de coeficientes de la ecuación actual
+                coeficientes = [lado_izquierdo.coeff(var) for var in variables_encabezado]
+
+                # Crear la fila completa: nombre de la ecuación, coeficientes, y el término independiente
+                fila = [name] + coeficientes + [lado_derecho]
+                tabla.append(fila)
+
+            # Imprimir la matriz completa con tabulate
+            print(tabulate(tabla, headers=encabezados, tablefmt="grid"))
             pass
 
         def minimizar(fun_restr_igualdad):
             # ToDo
             function_minimizar = fun_restr_igualdad[0]
+            print(function_minimizar)
+            pass
 
-        variables = symbols("x1 x2")
-        func = parse_expr(func_str)
+        # variables = symbols("x1 x2")
+        # func = parse_expr(func_str)
 
         # Se pasan las desigualdades a igualdades y se crea la función objetivo completa
 
@@ -209,9 +242,9 @@ class GranMApp:
         contador_a = 0
         contador_s = 0
 
-        for i, restriccion in enumerate(restricciones):
-            if ">=" in restriccion:
-                lhs, rhs = restriccion.split(">=")
+        for i, restriction in enumerate(restricciones):
+            if ">=" in restriction:
+                lhs, rhs = restriction.split(">=")
 
                 # Agregar variable de holgura (S) y artificial (A)
                 v_holgura = symbols(f"S{contador_s + 1}")
@@ -235,8 +268,8 @@ class GranMApp:
                 # print(variables_holgura)
                 # print(variables_artificiales)
 
-            elif "<=" in restriccion:
-                lhs, rhs = restriccion.split("<=")
+            elif "<=" in restriction:
+                lhs, rhs = restriction.split("<=")
 
                 # Agregar variable de holgura (S)
                 v_holgura = symbols(f"S{contador_s + 1}")
@@ -254,8 +287,8 @@ class GranMApp:
                 # Agregar las variables de exceso y artificial a las listas
                 variables_holgura.append(v_holgura)
 
-            elif "=" in restriccion:
-                lhs, rhs = restriccion.split("=")
+            elif "=" in restriction:
+                lhs, rhs = restriction.split("=")
 
                 # Agregar variable de artificial (A)
                 v_artificial = symbols(f"A{contador_a + 1}")
@@ -278,9 +311,9 @@ class GranMApp:
         to_maximizar = restricciones_ecuaciones[0] + "- Z"
         to_maximizar = Eq(parse_expr(to_maximizar), 0)
         restricciones_ecuaciones[0] = Eq(parse_expr(restricciones_ecuaciones[0]), parse_expr("Z"))
-        print(to_maximizar)
+        # print(to_maximizar)
 
-        print(restricciones_ecuaciones)
+        # print(restricciones_ecuaciones)
         if selection == "Minimizar":
             minimizar(restricciones_ecuaciones)
 
