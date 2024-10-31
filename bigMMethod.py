@@ -141,15 +141,17 @@ class GranMApp:
 
         try:
             # Ejecutar el método de Gran M
+            # result = self.big_m_method(func, [restriction1, restriction2, restriction3], selection)
             result = self.big_m_method(func, [restriction1, restriction2, restriction3], selection)
-
+            print(type(result))
             # Actualizar gráfica de las funciones ingresadas por el usuario
             self.create_plot()
 
-            if result is not None and result[0] is not None:
-                # `result[0]` contendrá la tabla final (DataFrame), y `result[1]` contendrá las iteraciones
-                result_str = result[0].to_string(index=True)
-                messagebox.showinfo("Resultado", f"Resultado óptimo:\n\n{result_str}")
+            if result is not None:
+                # result_str = result[1].to_string(index=True)
+                # tabulate(result[1], headers=result[0], tablefmt="grid")
+                messagebox.showinfo("Resultado", f"Resultado óptimo:\n\n{tabulate(result[1],
+                                                                                  headers=result[0], tablefmt="grid")}")
             else:
                 messagebox.showwarning("Resultado", "No se encontró una solución óptima.")
         except Exception as e:
@@ -160,7 +162,7 @@ class GranMApp:
         proceso_window.title("Proceso Detallado del Método de Gran M")
         proceso_window.resizable(False, False)
 
-        st = scrolledtext.ScrolledText(proceso_window, width=100, height=30)
+        st = scrolledtext.ScrolledText(proceso_window, width=105, height=30)
         st.pack()
 
         func = self.func_entry.get()
@@ -177,9 +179,13 @@ class GranMApp:
         st.insert(tk.END, f"Proceso: {proceso}\n\n")
 
         # Ejecutar el método y capturar los pasos
-        tabla_inicial, tablas_iteraciones = self.big_m_method(func, restricciones, proceso)
+        tabla_inicial = self.big_m_method(func, restricciones, proceso)
+        st.insert(tk.END, "tabla_inicial:\n\n")
+        st.insert(tk.END, tabulate(tabla_inicial[1], headers=tabla_inicial[0], tablefmt="grid") + "\n\n")
 
-        # Imprimir tabla inicial (Primera Iteración (Primer Sprint octubre 10 ToDo))
+        # tabulate(tabla_inicial, tabla_inicial[1], tablefmt="grid")
+
+        """"# Imprimir tabla inicial (Primera Iteración (Primer Sprint octubre 10 ToDo))
         st.insert(tk.END, "Tabla Inicial:\n")
         st.insert(tk.END, tabla_inicial.to_string(index=False))
         st.insert(tk.END, "\n\n")
@@ -189,7 +195,7 @@ class GranMApp:
             st.insert(tk.END, f"Iteración {i}:\n")
             st.insert(tk.END, tabla.to_string(index=False))
             st.insert(tk.END, "\n\n")
-            # Explicación de la tabla ToDo
+            # Explicación de la tabla ToDo"""
 
     @staticmethod
     def big_m_method(func_str, restricciones, selection):
@@ -236,7 +242,9 @@ class GranMApp:
                 tabla.append(fila)
 
             # Imprimir la matriz completa con tabulate
-            print(tabulate(tabla, headers=encabezados, tablefmt="grid"))
+            # print(tabulate(tabla, headers=encabezados, tablefmt="grid"))
+            tabla_init = [encabezados, tabla]
+            return tabla_init
 
         def minimizar(fun_restr_igualdad):
             # ToDo
@@ -340,6 +348,8 @@ class GranMApp:
 
         else:
             raise ValueError("Seleccione si Maximizar o Minimizar")
+
+        return maximizar(restricciones_ecuaciones, variables_basicas)
 
 
 if __name__ == "__main__":
