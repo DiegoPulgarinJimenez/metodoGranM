@@ -21,22 +21,22 @@ class GranMApp:
         # Labels y campos de entrada para la función objetivo y restricciones
         tk.Label(main_window_gm, text="Función Objetivo: Z = ").grid(row=0, column=0)
         self.func_entry = tk.Entry(main_window_gm)
-        self.func_entry.insert(0, "3*x1 + 5*x2")
+        self.func_entry.insert(0, "80*x1 + 90*x2")
         self.func_entry.grid(row=0, column=1, padx=10, pady=10)
 
         tk.Label(main_window_gm, text="Restricción 1:").grid(row=1, column=0)
         self.restriction1_entry = tk.Entry(main_window_gm)
-        self.restriction1_entry.insert(0, "2*x1 + 3*x2 >= 12")
+        self.restriction1_entry.insert(0, "1*x1 + 1*x2 = 30")
         self.restriction1_entry.grid(row=1, column=1, padx=10, pady=10)
 
         tk.Label(main_window_gm, text="Restricción 2:").grid(row=2, column=0)
         self.restriction2_entry = tk.Entry(main_window_gm)
-        self.restriction2_entry.insert(0, "4*x1 + 1*x2 >= 5")
+        self.restriction2_entry.insert(0, "0.2*x1 + 0.35*x2 >= 9")
         self.restriction2_entry.grid(row=2, column=1, padx=10, pady=10)
 
         tk.Label(main_window_gm, text="Restricción 3:").grid(row=3, column=0)
         self.restriction3_entry = tk.Entry(main_window_gm)
-        self.restriction3_entry.insert(0, "3*x1 + 3*x2 >= 18")
+        self.restriction3_entry.insert(0, "0.06*x1 + 0.12*x2 <= 3")
         self.restriction3_entry.grid(row=3, column=1, padx=10, pady=10)
 
         tk.Label(main_window_gm, text="x1, x2 ≥ 0").grid(row=4, column=1)
@@ -72,9 +72,14 @@ class GranMApp:
 
         try:
             # Obtener las restricciones como expresiones simbólicas (verificar la lógica de las desigualdades)
-            r1_expr = parse_expr(restriction1.replace(">=", "-(") + ")")
-            r2_expr = parse_expr(restriction2.replace(">=", "-(") + ")")
-            r3_expr = parse_expr(restriction3.replace(">=", "-(") + ")")
+            lhs1, rhs1 = restriction1.split("=")
+            r1_expr = Eq(parse_expr(lhs1), parse_expr(rhs1))
+
+            lhs2, rhs2 = restriction2.split(">=")
+            r2_expr = Eq(parse_expr(lhs2), parse_expr(rhs2))
+
+            lhs3, rhs3 = restriction3.split("<=")
+            r3_expr = Eq(parse_expr(lhs3), parse_expr(rhs3))
 
             # Resolver las restricciones una vez
             r1_sol = solve(r1_expr, x2)[0]
@@ -112,8 +117,8 @@ class GranMApp:
             messagebox.showerror("Error en la gráfica", str(e))
             return
 
-        ax.set_xlim(0, 20)
-        ax.set_ylim(0, 20)
+        ax.set_xlim(0, 50)
+        ax.set_ylim(0, 50)
         ax.set_xlabel("x1")
         ax.set_ylabel("x2")
         ax.set_title("Gráfica de Restricciones y Función Objetivo")
@@ -189,56 +194,61 @@ class GranMApp:
     @staticmethod
     def big_m_method(func_str, restricciones, selection):
 
-        def maximizar(fun_restr_igualdad):
+        def maximizar(fun_restr_igualdad, vb):
 
-            """Montar primera tabla"""
-            # Definir las variables simbólicas
-            A1, A2, A3, M, Z, x1, x2, S1, S2, S3 = symbols('A1 A2 A3 M Z x1 x2 S1 S2 S3')
-
+            """Montar primera tabla simplex"""
+            v_b = vb
             function_maximizar = fun_restr_igualdad
+            M = symbols('M')
+            valor_de_M = 1e6
 
             # Crear lista de las variables que harán de encabezado
-            variables_encabezado = [A1, A2, A3, M, Z, x1, x2, S1, S2, S3]
+            variables_sin_repetir = set()
+
+            for equation in function_maximizar:
+                variables_sin_repetir.update(equation.free_symbols)
+
+            variables_encabezado = sorted([var for var in variables_sin_repetir if var != M], key=lambda v: str(v))
 
             # Definir nombres para cada ecuación (fila)
             nombres_ecuaciones = ["Función objetivo", "Restricción 1", "Restricción 2", "Restricción 3"]
 
             # Crear la primera fila con los encabezados de las variables y agregar columnas para nombre de ecuaciones y
             # Término independiente
-            encabezados = ["Ecuaciones"] + [str(var) for var in variables_encabezado] + ["Término Independiente"]
+            encabezados = ["VB", "Ecuaciones"] + [str(var) for var in variables_encabezado] + ["Término Independiente"]
 
             # Construir la tabla inicial
             tabla = []
-            for name, equation in zip(nombres_ecuaciones, function_maximizar):
+            for name, equation, vb_value in zip(nombres_ecuaciones, function_maximizar, v_b):
                 # Separar el lado izquierdo y derecho de la ecuación
                 lado_izquierdo = equation.lhs
                 lado_derecho = equation.rhs
 
+                # Sustituir M por su valor en los coeficientes para cada ecuación
+                lado_izquierdo = lado_izquierdo.subs(M, valor_de_M)
+
                 # Crear una lista de coeficientes de la ecuación actual
                 coeficientes = [lado_izquierdo.coeff(var) for var in variables_encabezado]
 
-                # Crear la fila completa: nombre de la ecuación, coeficientes, y el término independiente
-                fila = [name] + coeficientes + [lado_derecho]
+                # Crear la fila completa: variables básicas, nombre de la ecuación, coeficientes, y el término
+                # independiente
+                fila = [str(vb_value), name] + coeficientes + [lado_derecho]
                 tabla.append(fila)
 
             # Imprimir la matriz completa con tabulate
             print(tabulate(tabla, headers=encabezados, tablefmt="grid"))
-            pass
 
         def minimizar(fun_restr_igualdad):
             # ToDo
             function_minimizar = fun_restr_igualdad[0]
             print(function_minimizar)
-            pass
-
-        # variables = symbols("x1 x2")
-        # func = parse_expr(func_str)
 
         # Se pasan las desigualdades a igualdades y se crea la función objetivo completa
 
         restricciones_ecuaciones = [func_str]
         variables_artificiales = []
         variables_holgura = []
+        variables_basicas = ["Z"]
         contador_a = 0
         contador_s = 0
 
@@ -250,12 +260,13 @@ class GranMApp:
                 v_holgura = symbols(f"S{contador_s + 1}")
                 v_artificial = symbols(f"A{contador_a + 1}")
 
-                restricciones_ecuaciones[0] += " + "
-                restricciones_ecuaciones[0] += " M*"
-                restricciones_ecuaciones[0] += f"A{contador_a + 1}"
+                restricciones_ecuaciones[0] += " + M*" + f"A{contador_a + 1}"
 
                 contador_a += 1
                 contador_s += 1
+
+                # Variable básica positiva (variable artificial)
+                variables_basicas.append(v_artificial)
 
                 # Modificar la restricción para convertirla en igualdad
                 eq = Eq(parse_expr(lhs) - v_holgura + v_artificial, parse_expr(rhs))
@@ -274,11 +285,14 @@ class GranMApp:
                 # Agregar variable de holgura (S)
                 v_holgura = symbols(f"S{contador_s + 1}")
 
-                restricciones_ecuaciones[0] += " + "
+                """restricciones_ecuaciones[0] += " + "
                 restricciones_ecuaciones[0] += " M*"
-                restricciones_ecuaciones[0] += f"S{contador_s + 1}"
+                restricciones_ecuaciones[0] += f"S{contador_s + 1}"""""
 
                 contador_s += 1
+
+                # Variable básica positiva (variable de holgura)
+                variables_basicas.append(v_holgura)
 
                 # Modificar la restricción para convertirla en igualdad
                 eq = Eq(parse_expr(lhs) + v_holgura, parse_expr(rhs))
@@ -293,11 +307,12 @@ class GranMApp:
                 # Agregar variable de artificial (A)
                 v_artificial = symbols(f"A{contador_a + 1}")
 
-                restricciones_ecuaciones[0] += " + "
-                restricciones_ecuaciones[0] += " M*"
-                restricciones_ecuaciones[0] += f"A{contador_a + 1}"
+                restricciones_ecuaciones[0] += " + M*" + f"A{contador_a + 1}"
 
                 contador_a += 1
+
+                # Variable básica positiva (variable artificial)
+                variables_basicas.append(v_artificial)
 
                 # Modificar la restricción para convertirla en igualdad
                 eq = Eq(parse_expr(lhs) + v_artificial, parse_expr(rhs))
@@ -312,14 +327,16 @@ class GranMApp:
         to_maximizar = Eq(parse_expr(to_maximizar), 0)
         restricciones_ecuaciones[0] = Eq(parse_expr(restricciones_ecuaciones[0]), parse_expr("Z"))
         # print(to_maximizar)
-
         # print(restricciones_ecuaciones)
+        print(variables_basicas)
+        print(type(variables_basicas[1]))
+
         if selection == "Minimizar":
             minimizar(restricciones_ecuaciones)
 
         elif selection == "Maximizar":
             restricciones_ecuaciones[0] = to_maximizar
-            maximizar(restricciones_ecuaciones)
+            maximizar(restricciones_ecuaciones, variables_basicas)
 
         else:
             raise ValueError("Seleccione si Maximizar o Minimizar")
