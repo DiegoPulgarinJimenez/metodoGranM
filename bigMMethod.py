@@ -1,27 +1,26 @@
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, ttk
+from tkinter import messagebox
 from tkinter.scrolledtext import ScrolledText
-from sensitivity import SensitivityAnalyzer
-import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import pulp
-from pulp import value, LpVariable
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from pulp import value
 from sympy import symbols, parse_expr, Eq, solve, lambdify
 from tabulate import tabulate
 
 
-# análisis de sensibilidad
-# gráfico de los resultados
-# iteraciones
-
 class GranMApp:
     def __init__(self, main_window_gm):
-        # Ponerle un icono ToDo
+
+        # configuraciones de la interfaz
+        icon_window = tk.PhotoImage(file="images_icon/big_m_icon.png")  # Carga el ícono
         self.main_window_gm = main_window_gm
         self.main_window_gm.title("Método de Gran M")
         self.main_window_gm.resizable(False, False)
+        self.main_window_gm.iconphoto(True, icon_window)
 
         # Labels y campos de entrada para la función objetivo y restricciones
         tk.Label(main_window_gm, text="Función Objetivo: Z = ").grid(row=0, column=0)
@@ -61,7 +60,6 @@ class GranMApp:
                                                                                             pady=10)
         tk.Button(main_window_gm, text="Imprimir Proceso", command=self.imprimir_proceso).grid(row=5, column=1, padx=10,
                                                                                                pady=10)
-
         # Crear la gráfica
         self.create_plot()
 
@@ -112,7 +110,7 @@ class GranMApp:
             ax.plot(x_vals, r2_x2_vals, label=f"{restriction2}")
             ax.plot(x_vals, r3_x2_vals, label=f"{restriction3}")
 
-            # Graficar la función objetivo para diferentes valores de Z
+            # Graficar la función objetivo así como el valor final de Z
             obj_x2_vals = (z - obj_expr.coeff(x1) * x_vals) / obj_expr.coeff(x2)
             ax.plot(x_vals, obj_x2_vals, label=f"{func} (Z = {z})", linestyle='--')
 
@@ -123,7 +121,6 @@ class GranMApp:
             ax.fill_between(x_vals, feasible_region_y, 0, where=(feasible_region_y > 0), color="gray", alpha=0.3,
                             label="Región factible")
 
-            # Resaltar el punto óptimo
             # Resaltar el punto óptimo
             if x_opt is not None and y_opt is not None:
                 ax.plot(x_opt, y_opt, "ro", label=f"Punto óptimo (x={x_opt}, y={y_opt})")
@@ -164,17 +161,181 @@ class GranMApp:
             self.create_plot()
 
             if result is not None:
-                messagebox.showinfo("Maximización", "Calculo Correcto / Click Imprimir Proceso para Ver")
+                messagebox.showinfo("Cálculo", "Cálculo Correcto / Click Imprimir Proceso Para Ver Detalles")
             else:
                 messagebox.showwarning("Resultado", "No se encontró una solución óptima.")
 
         except Exception as e:
-            messagebox.showerror("Error en el cálculo", str(e))
+            messagebox.showerror("Error en el Cálculo", str(e))
 
     def iterate_big_m(self, tabla_inicial):
 
-        # print(tabla_inicial)
+        """ tabla_simple correspondiente al parametro entrante en la función iterate_big_m, es igual al parametro
+        entrante actual."""
+
+        tabla_simple = [
+            ['VB', 'Ecuaciones', 'A1', 'A2', 'S1', 'S2', 'Z', 'x1', 'x2', 'Término Independiente'],
+            ['Z', 'Función objetivo', 1e6, 1e6, 0, 0, -1, 80, 90, 0],
+            ['A1', 'Restricción 1', 1, 0, 0, 0, 0, 1, 1, 30],
+            ['A2', 'Restricción 2', 0, 1, -1, 0, 0, 0.2, 0.35, 9],
+            ['S2', 'Restricción 3', 0, 0, 0, 1, 0, 0.06, 0.12, 3]
+        ]
+
+        """print()
+        tabla_inicial_2 = copy.deepcopy(tabla_inicial)
+        iteraciones_tabla_ordenada = tabla_inicial_2[0:1] + tabla_inicial_2[1]
+        print(iteraciones_tabla_ordenada)
+        """
+
+        def iteraciones_final(table_simplex):
+            tabla_simplex_iteraciones = table_simplex
+
+            # Reorganizar las columnas de la tabla
+            def reorganizar_tabla(tabla, orden):
+                # Crear índice del nuevo orden
+                indices = [tabla[0].index(col) for col in orden]
+                # Reordenar cada fila con base en los índices
+                return [[fila[i] for i in indices] for fila in tabla]
+
+            # Paso 2: Encontrar columna pivote
+            def encontrar_columna_pivote(fila_objetivo_z, columnas_a_omitir, encabezados_1):
+                indices_validos = [
+                    i for i, col in enumerate(encabezados_1) if col not in columnas_a_omitir
+                ]
+                valores_validos = [fila_objetivo_z[i] for i in indices_validos]
+                indice_pivote = indices_validos[valores_validos.index(min(valores_validos))]
+                return indice_pivote
+
+            # Paso 2: Encontrar fila pivote
+            def encontrar_fila_pivote(tabla, index_columna_pivote):
+                filas = tabla[2:]  # Ignorar encabezados y la fila Z
+                cocientes = []
+                for fila in filas:
+                    termino_independiente = fila[-1]
+                    value_columna_pivote = fila[index_columna_pivote]
+                    if value_columna_pivote > 0:  # Evitar divisiones por 0 y cocientes negativos
+                        cocientes.append(termino_independiente / value_columna_pivote)
+                    else:
+                        cocientes.append(float('inf'))  # Valores no válidos
+                index_fila_pivote = cocientes.index(min(cocientes))
+                return index_fila_pivote + 2  # Ajustar índice por encabezados y fila Z
+                # return cocientes.index(min(cocientes)) + 2
+
+            # Evaluar si aún hay valores negativos en la fila Z
+            def tiene_valores_negativos(fila_objetivo_z, columnas_a_omitir, encabezados_1):
+                indices_validos = [i for i, col in enumerate(encabezados_1) if col not in columnas_a_omitir]
+                valores = [fila_objetivo_z[i] for i in indices_validos]
+                return any(valor < 0 for valor in valores)
+
+            # Copiar tabla para trabajar
+            tabla_actualizada = [fila.copy() for fila in tabla_simplex_iteraciones]
+
+            # Multiplicar las filas de A1 y A2 por -M (1e6)
+            M = 1e6
+            fila_A1 = tabla_actualizada[2]  # Fila A1
+            fila_A2 = tabla_actualizada[3]  # Fila A2
+            fila_Z = tabla_actualizada[1]  # Fila Z
+
+            # Multiplicar A1 y A2 por -M
+            fila_A1_negada = [-M * valor if isinstance(valor, (int, float)) else valor for valor in fila_A1]
+            fila_A2_negada = [-M * valor if isinstance(valor, (int, float)) else valor for valor in fila_A2]
+
+            # Sumar A1_negada, A2_negada y Z para calcular la nueva fila Z
+            nueva_fila_Z = [
+                (fila_Z[i] + fila_A1_negada[i] + fila_A2_negada[i]) if isinstance(fila_Z[i], (int, float)) else
+                fila_Z[
+                    i]
+                for i in range(len(fila_Z))
+            ]
+
+            # Actualizar la fila Z en la tabla
+            tabla_actualizada[1] = nueva_fila_Z
+
+            # Orden deseado de las columnas
+            orden_deseado = ['VB', 'Ecuaciones', 'Z', 'x1', 'x2', 'S1', 'S2', 'A1', 'A2', 'Término Independiente']
+
+            # Reorganizar la tabla
+            tabla_reorganizada = reorganizar_tabla(tabla_actualizada, orden_deseado)
+            tabla_inicial_ordenada = reorganizar_tabla(tabla_simplex_iteraciones, orden_deseado)
+
+            # Imprimir la tabla inicial ordenada
+            print("\nTabla Inicial: ")
+            print(tabulate(tabla_inicial_ordenada, headers='firstrow', tablefmt="fancy_grid"))
+
+            # Imprimir la tabla reorganizada
+            print()
+            print("Tabla Simplex (actualización de fila Z, eliminando las M de A1 y A2):")
+            print(tabulate(tabla_reorganizada, headers='firstrow', tablefmt='fancy_grid'))
+            print()
+
+            # Configuración
+            columnas_ignoradas = ['VB', 'Ecuaciones', 'Z', 'Término Independiente']
+            encabezados = tabla_reorganizada[0]
+            fila_z = tabla_reorganizada[1]
+
+            iteration = 1
+
+            while tiene_valores_negativos(fila_z, columnas_ignoradas, encabezados):
+
+                # Encontrar columna y fila pivote
+                indice_columna_pivote = encontrar_columna_pivote(fila_z, columnas_ignoradas, encabezados)
+                indice_fila_pivote = encontrar_fila_pivote(tabla_reorganizada, indice_columna_pivote)
+
+                # Obtener número pivote
+                numero_pivote = tabla_reorganizada[indice_fila_pivote][indice_columna_pivote]
+
+                # Mostrar resultados
+                columna_pivote = encabezados[indice_columna_pivote]
+                fila_pivote = tabla_reorganizada[indice_fila_pivote]
+
+                print(f"\nColumna pivote: {columna_pivote} (Índice: {indice_columna_pivote})")
+                print(f"Fila pivote: {fila_pivote[0]} (Índice: {indice_fila_pivote})")
+                print(f"Número pivote: {numero_pivote} \n")
+                print(f"Tabla Iteración: {iteration}")
+
+                # Tercer paso: Reemplazar la columna 'VB' de la fila pivote
+                tabla_reorganizada[indice_fila_pivote][
+                    0] = columna_pivote  # Reemplazar 'VB' por el nombre de la columna pivote
+
+                # Hacer que el número pivote sea 1
+                # Para eso, multiplicamos la fila pivote por el inverso del valor pivote
+                tabla_reorganizada[indice_fila_pivote] = [
+                    valor / numero_pivote if isinstance(valor, (int, float)) else valor
+                    for valor in tabla_reorganizada[indice_fila_pivote]
+                ]
+
+                # Hacer ceros los valores de la columna pivote en las demás filas
+                for i, fila in enumerate(tabla_reorganizada):
+                    if i != indice_fila_pivote:  # Saltar la fila pivote
+                        valor_columna_pivote = fila[indice_columna_pivote]
+                        if isinstance(valor_columna_pivote, (int, float)) and valor_columna_pivote != 0:
+                            factor = valor_columna_pivote
+                            tabla_reorganizada[i] = [
+                                fila[j] - (factor * tabla_reorganizada[indice_fila_pivote][j])
+                                if isinstance(fila[j], (int, float)) else fila[j]
+                                for j in range(len(fila))
+                            ]
+
+                print(tabulate(tabla_reorganizada, headers='firstrow', tablefmt='fancy_grid'))
+                # Actualizar fila Z para verificar condición del `while`
+                fila_z = tabla_reorganizada[1]
+                iteration += 1
+
+            # Imprimir la tabla final
+            # Aplicar valor absoluto al valor de la Z, puesto que estamos maximizando
+            fila_z_f = tabla_reorganizada[1]
+            indice_valor_z = -1  # Última columna
+            fila_z_f[indice_valor_z] = abs(fila_z_f[indice_valor_z])
+            """print(fila_z_f[indice_valor_z])
+            print(fila_z_f)"""
+            print("\nTabla solución:")
+            print(tabulate(tabla_reorganizada, headers='firstrow', tablefmt='fancy_grid'))
+
+        # Llamamos a la función
+        iteraciones_final(tabla_simple)
+
         def solve_with_pulp_big_m(initial_table):
+
             # Leer análisis de sensibilidad
             ruta_archivo = "analisis_sensibilidad/análisis de sensibilidad gM.xlsx"
             resultados_df = pd.read_excel(ruta_archivo, sheet_name="Análisis de sensibilidad")
@@ -184,6 +345,8 @@ class GranMApp:
             # Convertir DataFrames a tablas en formato de texto
             resultados_tabla = tabulate(resultados_df, headers="keys", tablefmt="grid")
             sensibilidad_tabla = tabulate(sensibilidad_df, headers="keys", tablefmt="pipe")
+
+            """Solución del modelo a través de la librería Pulp"""
 
             # Crear el problema a maximizar
             prob = pulp.LpProblem("Maximizar_Z", pulp.LpMaximize)
@@ -201,7 +364,7 @@ class GranMApp:
 
             # Agregar restricciones basadas en las filas de la tabla (excepto la primera y la de objetivo)
             for i, restriction in enumerate(initial_table[2:], start=1):
-                restriction_name = restriction[0]  # Identificador de la restricción
+                """restriction_name = restriction[0]  # Identificador de la restricción"""
                 restriction_coefficient = restriction[2:-1]  # Coeficientes de la restricción
                 termino_independiente = restriction[-1]  # Valor independiente de la restricción
 
@@ -214,13 +377,9 @@ class GranMApp:
             prob.solve()
 
             # Modifica la gráfica de acuerdo al resultado del problema
-            # Definir las variables (ejemplo)
-
             x_optimo = pulp.value(variables["x1"])
             y_optimo = pulp.value(variables["x2"])
-            print("Valores", x_optimo, y_optimo, type(x_optimo), type(y_optimo))
             Z = value(prob.objective)
-
             self.create_plot(Z, x_optimo, y_optimo)
 
             # Crear la lista transpuesta de resultados con encabezado en filas
@@ -257,189 +416,26 @@ class GranMApp:
 
             root_result.mainloop()
 
-        print()
-        """
-        Realiza iteraciones en el método de gran M, guardando cada tabla resultante
-        y retornando una lista de las tablas en cada iteración.
-        """
+        # Preparación de la tabla (lista) para ser recibida como un parametro correcto
         iteraciones = tabla_inicial
         tabla_simp = [iteraciones[0]]
         for lista in iteraciones[1]:
             tabla_simp.append(lista)
 
-        print("this one is the one")
-        # print(tabulate(tabla_simp, headers="firstrow", tablefmt="grid"))
+        print()
         table_solve = tabla_simp
-        # print()
-        # print(tabla_simp)
-        # print()
 
-        print("This is the table solve: ", table_solve)
         solve_with_pulp_big_m(table_solve)
 
-        fila_objetivo = tabla_simp[1]
-        nueva_fila_objetivo = [
-            fila_objetivo[0],  # Columna Z
-            fila_objetivo[1],  # Nombre de la función objetivo
-            0, 0,  # Coeficientes que deben ser 0
-            1e+06,  # Mantener el valor de M
-            0,  # Coeficiente para la variable de holgura
-            -1,  # Mantener el valor de Z
-            -1.2 * 1e+06 + fila_objetivo[7],  # Actualizando con la operación elementales
-            -1.35 * 1e+06 + fila_objetivo[8],
-            -39 * 1e+06,  # Ajustando el último valor
-        ]
-
-        # print(nueva_fila_objetivo)
-        # print()
-
-        tabla_simp[1] = nueva_fila_objetivo
-
-        # print(tabulate(tabla_simp, headers="firstrow", tablefmt="grid"))
-        # print()
-        # print(tabla_simp)
-
-        while True:
-            # Obtener la tabla actual
-            tabla_actual = tabla_simp
-
-            # Identificar columna pivote (mínimo negativo en la función objetivo)
-            fila_objetivo = tabla_actual[1]
-            columna_pivote_index = min(
-                (i for i in range(2, len(fila_objetivo) - 1)),
-                key=lambda j: fila_objetivo[j]
-            )
-            print()
-            print(fila_objetivo)
-            print()
-            print(columna_pivote_index)
-            print()
-            print(tabulate(tabla_simp, headers="firstrow", tablefmt="grid"))
-            print()
-            # Si no hay valores negativos en la fila objetivo, la solución es óptima
-            if all(fila_objetivo[j] >= 0 for j in range(2, len(fila_objetivo) - 1)):
-                break
-
-            # Identificar fila pivote usando el cociente entre el término independiente y el coeficiente en la columna pivote
-            ratios = [
-                (row[-1] / row[columna_pivote_index], i)
-                for i, row in enumerate(tabla_actual[2:], 2) if row[columna_pivote_index] > 0
-            ]
-            print(ratios)
-            # Si no se puede encontrar una fila pivote, detener
-            if not ratios:
-                raise ValueError("No hay solución factible.")
-
-            _, fila_pivote_index = min(ratios)
-            print()
-            print(fila_pivote_index)
-            print()
-            # Realizar operación de pivote en la tabla
-            valor_pivote = tabla_actual[fila_pivote_index][columna_pivote_index]
-            print()
-            print(valor_pivote)
-            print()
-            tabla_actual[fila_pivote_index][0] = tabla_actual[0][columna_pivote_index]
-            print()
-            print(tabulate(tabla_actual, headers="firstrow", tablefmt="grid"))
-            print()
-
-            # Normalizar la fila pivote (hacer que el pivote sea 1)
-            fila_pivote = tabla_actual[fila_pivote_index]
-            valor_pivote = tabla_actual[fila_pivote_index][columna_pivote_index]
-
-            # Normalización de la fila pivote
-            tabla_actual[fila_pivote_index] = [
-                x / valor_pivote if isinstance(x, (int, float)) else x for x in fila_pivote
-            ]
-            print(tabulate(tabla_actual, headers="firstrow", tablefmt="grid"))
-
-            # Hacer ceros los demás valores de la columna pivote
-            for i, fila in enumerate(tabla_actual):
-                if i != fila_pivote_index:  # Saltar la fila pivote
-                    factor = fila[columna_pivote_index]
-                    # Resta el múltiplo de la fila pivote a la fila actual para hacer cero en la columna pivote
-                    tabla_actual[i] = [
-                        val - factor * piv_val if isinstance(val, (int, float)) else val
-                        for val, piv_val in zip(fila, tabla_actual[fila_pivote_index])
-                    ]
-
-            # Imprimir la tabla actualizada
-            print(tabulate(tabla_actual, headers="firstrow", tablefmt="grid"))
-
-            print()
-            print("here")
-            # fila_pivote = tabla_actual[fila_pivote_index]
-            # pivote = fila_pivote[columna_pivote_index]
-            fila_pivote_normalizada = [x / valor_pivote for x in fila_pivote]
-
-            print("here")
-
-            # Actualizar el resto de las filas en la tabla sin afectar la columna Z
-            nueva_tabla = [tabla_actual[0]]  # Mantener encabezado
-            for i, fila in enumerate(tabla_actual[1:], 1):
-                if i == fila_pivote_index:
-                    nueva_tabla.append(fila_pivote_normalizada)
-                else:
-                    factor = fila[columna_pivote_index]
-                    nueva_fila = [
-                        a - factor * b if j != 4 else a  # No modificar la columna Z
-                        for j, (a, b) in enumerate(zip(fila, fila_pivote_normalizada))
-                    ]
-                    nueva_tabla.append(nueva_fila)
-
-            # Guardar la nueva iteración
-            iteraciones.append([tabla_inicial[0], nueva_tabla])
-            print(tabulate(nueva_tabla, headers="firstrow", tablefmt="grid"))
-            print()
-
-        return iteraciones
-
     def imprimir_proceso(self):
-
-        """proceso_window = tk.Toplevel(self.main_window_gm)
-        proceso_window.title("Proceso Detallado del Método de Gran M")
-        proceso_window.resizable(False, False)
-
-        st = scrolledtext.ScrolledText(proceso_window, width=105, height=30)
-        st.pack()
-
-        func = self.func_entry.get()
-        restricciones = [self.restriction1_entry.get(), self.restriction2_entry.get(), self.restriction3_entry.get()]
-        proceso = self.option.get()
-
-        # Inicio de impresión de los datos
-
-        st.insert(tk.END, "Proceso detallado del Método de Gran M:\n\n")
-        st.insert(tk.END, f"Función objetivo: {func}\n")
-        st.insert(tk.END, f"Restricción 1: {restricciones[0]}\n")
-        st.insert(tk.END, f"Restricción 2: {restricciones[1]}\n")
-        st.insert(tk.END, f"Restricción 3: {restricciones[2]}\n")
-        st.insert(tk.END, "x1, x2 >= 0\n\n")
-        st.insert(tk.END, f"Proceso: {proceso}\n\n")"""
 
         # Generar el proceso y capturar iteraciones
         tabla_inicial = self.big_m_method(self.func_entry.get(), [self.restriction1_entry.get(),
                                                                   self.restriction2_entry.get(),
                                                                   self.restriction3_entry.get()],
                                           self.option.get())
-        iteraciones = self.iterate_big_m(tabla_inicial)
-
-        """st.insert(tk.END, tabulate(tabla_inicial, headers=tabla_inicial[0], tablefmt="grid") + "\n\n")
-
-        # Imprimir cada iteración
-        for i, iteration in enumerate(iteraciones):
-            st.insert(tk.END, f"Iteración {i + 1}:\n")
-            st.insert(tk.END, tabulate(iteration[1], headers=iteration[0], tablefmt="grid"))
-            st.insert(tk.END, "\n\n")
-
-        # Ejecutar el método y capturar los pasos
-        st.insert(tk.END, "tabla_inicial:\n\n")
-        st.insert(tk.END, tabulate(tabla_inicial[1], headers=tabla_inicial[0], tablefmt="grid") + "\n\n")
-
-        print(tabulate(tabla_inicial[1], headers=tabla_inicial[0], tablefmt="grid"))
-
-        st.configure(state='disabled')  # Hacer que el texto sea no editable"""
+        # iteraciones = self.iterate_big_m(tabla_inicial)
+        self.iterate_big_m(tabla_inicial)
 
     @staticmethod
     def big_m_method(func_str, restricciones, selection):
@@ -485,15 +481,16 @@ class GranMApp:
                 fila = [str(vb_value), name] + coeficientes + [lado_derecho]
                 tabla.append(fila)
 
-            # Imprimir la matriz completa usando la librería tabulate
-            # print(tabulate(tabla, headers=encabezados, tablefmt="grid"))
+            # Imprimir la matriz completa usando la librería Tabulate
             tabla_init = [encabezados, tabla]
             return tabla_init
 
-        def minimizar(fun_restr_igualdad):
-            # ToDo
-            function_minimizar = fun_restr_igualdad[0]
-            print(function_minimizar)
+        def minimizar(fun_restr_igualdad, vb):
+            """Invocamos maximizar puesto que los problemas de maximización y minimización son duales entre sí,
+            si La región factible y la función objetivo están bien definidas y son consistentes el valor óptimo de la
+            función objetivo en el problema primal (maximización) es igual al valor óptimo en el problema
+            dual (minimización), siempre que ambos problemas tengan soluciones óptimas."""
+            maximizar(fun_restr_igualdad, vb)
 
         # Se pasan las desigualdades a igualdades y se crea la función objetivo completa
 
@@ -585,7 +582,8 @@ class GranMApp:
         # print(type(variables_basicas[1]))
 
         if selection == "Minimizar":
-            minimizar(restricciones_ecuaciones)
+            restricciones_ecuaciones[0] = to_maximizar
+            minimizar(restricciones_ecuaciones, variables_basicas)
 
         elif selection == "Maximizar":
             restricciones_ecuaciones[0] = to_maximizar
