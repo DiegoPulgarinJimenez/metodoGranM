@@ -106,13 +106,13 @@ class GranMApp:
             r3_x2_vals = r3_func(x_vals)
 
             # Graficar las restricciones
-            ax.plot(x_vals, r1_x2_vals, label=f"{restriction1}")
-            ax.plot(x_vals, r2_x2_vals, label=f"{restriction2}")
-            ax.plot(x_vals, r3_x2_vals, label=f"{restriction3}")
+            ax.plot(x_vals, r1_x2_vals, label=f"Restricción 1: {restriction1}")
+            ax.plot(x_vals, r2_x2_vals, label=f"Restricción 2: {restriction2}")
+            ax.plot(x_vals, r3_x2_vals, label=f"Restricción 3: {restriction3}")
 
             # Graficar la función objetivo así como el valor final de Z
             obj_x2_vals = (z - obj_expr.coeff(x1) * x_vals) / obj_expr.coeff(x2)
-            ax.plot(x_vals, obj_x2_vals, label=f"{func} (Z = {z})", linestyle='--')
+            ax.plot(x_vals, obj_x2_vals, label=f"Recta de Iso-utilidad: {func} (Z = {z})", linestyle='--')
 
             # Resaltar la región factible (donde las restricciones se superponen)
             # La región factible es la intersección de todas las restricciones, por lo que
